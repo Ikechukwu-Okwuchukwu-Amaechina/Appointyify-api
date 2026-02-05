@@ -12,8 +12,14 @@ app.use(express.json());
 connectDB();
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/businesses', require('./routes/business'));
+app.use('/api/bookings', require('./routes/booking'));
 
 app.get('/', (req, res) => res.send('Hello Appointly'));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (require.main === module) {
+	app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;
