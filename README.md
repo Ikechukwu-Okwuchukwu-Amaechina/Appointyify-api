@@ -5,8 +5,8 @@ Quick starter for the API using Express + Mongoose. This API handles authenticat
 ## Features
 
 - **Authentication**: JWT-based registration and login with password hashing.
-- **Business Management**: CRUD operations for businesses with role-based access.
-- **Booking System**: Create and manage appointments with status tracking.
+- **Business Management**: CRUD operations with search, category filtering, and pagination support.
+- **Booking System**: Automated slot generation based on working hours, availability checking, and appointment lifecycle management (confirm/cancel).
 - **Role-based Access**: Specific permissions for Users, Businesses, and Admins.
 - **Testing**: Integrated test suite using Jest and Supertest.
 
@@ -43,5 +43,5 @@ npm test
 ## API Routes
 
 - `/api/auth` - Registration, Login, and User Profile
-- `/api/businesses` - Business listing and management
-- `/api/bookings` - Appointment scheduling and history
+- `/api/businesses` - Listing (search/filter), management, and owner views
+- `/api/bookings` - Availability checks, scheduling, status tracking, and cancellation

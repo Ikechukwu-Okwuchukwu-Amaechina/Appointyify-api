@@ -11,8 +11,9 @@ const {
 
 router.post('/', protect, createBusiness);
 router.get('/', getAllBusinesses);
+router.get('/mine', protect, require('../controllers/businessController').getMyBusinesses);
 router.get('/:id', getBusinessById);
 router.patch('/:id', protect, updateBusiness);
-router.delete('/:id', protect, restrictTo('admin'), deleteBusiness);
+router.delete('/:id', protect, deleteBusiness);
 
 module.exports = router;
