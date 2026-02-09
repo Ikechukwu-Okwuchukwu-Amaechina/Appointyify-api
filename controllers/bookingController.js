@@ -1,5 +1,6 @@
 const Booking = require('../models/Booking');
 const Business = require('../models/Business');
+const { validationResult } = require('express-validator');
 
 function parseDateOnly(dateStr) {
   // expects YYYY-MM-DD
@@ -36,6 +37,9 @@ function generateSlotsFromWorkingHours(workingHours, slotDuration) {
 }
 
 exports.createBooking = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const { business: businessId, date, startTime, notes } = req.body;
     if (!businessId || !date || !startTime) return res.status(400).json({ msg: 'business, date and startTime are required' });

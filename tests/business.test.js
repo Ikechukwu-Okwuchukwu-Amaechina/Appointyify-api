@@ -22,7 +22,7 @@ describe('Business routes', () => {
 
   test('create, get, update business flow', async () => {
     // register a user
-    const user = { name: 'Owner', email: 'owner@example.com', password: 'password123' };
+    const user = { name: 'Owner', email: 'owner@example.com', password: 'password123', role: 'business' };
     const regRes = await request(app).post('/api/auth/register').send(user);
     expect(regRes.status).toBe(201);
     const token = regRes.body.token;

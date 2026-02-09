@@ -1,7 +1,11 @@
 const Business = require('../models/Business');
 const User = require('../models/User');
+const { validationResult } = require('express-validator');
 
 exports.createBusiness = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     // Only users with role 'business' (or admin) can create businesses
     if (!req.user || (req.user.role !== 'business' && req.user.role !== 'admin')) {
@@ -42,6 +46,9 @@ exports.getBusinessById = async (req, res) => {
 };
 
 exports.updateBusiness = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const b = await Business.findById(req.params.id);
     if (!b) return res.status(404).json({ msg: 'Not found' });
@@ -57,13 +64,16 @@ exports.updateBusiness = async (req, res) => {
 };
 
 exports.deleteBusiness = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const b = await Business.findById(req.params.id);
     if (!b) return res.status(404).json({ msg: 'Not found' });
     if (String(b.owner) !== String(req.user._id) && req.user.role !== 'admin') {
       return res.status(403).json({ msg: 'Forbidden' });
     }
-    await b.remove();
+    await Business.findByIdAndDelete(req.params.id);
     res.json({ msg: 'Deleted' });
   } catch (err) {
     res.status(400).json({ msg: 'Bad request' });

@@ -22,18 +22,18 @@ describe('Booking routes', () => {
 
   test('create booking and list mine', async () => {
     // register a user
-    const user = { name: 'Booker', email: 'booker@example.com', password: 'password123' };
+    const user = { name: 'Booker', email: 'booker@example.com', password: 'password123', role: 'business' };
     const regRes = await request(app).post('/api/auth/register').send(user);
     expect(regRes.status).toBe(201);
     const token = regRes.body.token;
 
     // create a business
-    const bizRes = await request(app).post('/api/businesses').set('Authorization', `Bearer ${token}`).send({ name: 'Biz for booking' });
+    const bizRes = await request(app).post('/api/businesses').set('Authorization', `Bearer ${token}`).send({ name: 'Biz for booking', workingHours: '09:00-17:00' });
     expect(bizRes.status).toBe(201);
     const businessId = bizRes.body._id;
 
     // create booking
-    const booking = { business: businessId, date: new Date().toISOString(), startTime: '10:00', endTime: '10:30' };
+    const booking = { business: businessId, date: '2026-02-15', startTime: '10:00' };
     const createRes = await request(app).post('/api/bookings').set('Authorization', `Bearer ${token}`).send(booking);
     expect(createRes.status).toBe(201);
     expect(createRes.body.business).toBe(businessId);
