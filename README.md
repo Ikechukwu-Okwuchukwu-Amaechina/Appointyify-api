@@ -7,6 +7,7 @@ Quick starter for the API using Express + Mongoose. This API handles authenticat
 - **Authentication**: JWT-based registration and login with password hashing.
 - **Business Management**: CRUD operations with search, category filtering, and pagination support.
 - **Booking System**: Automated slot generation based on working hours, availability checking, and appointment lifecycle management (confirm/cancel).
+- **Real-time Messaging**: WebSocket-based chat system between clients and businesses for seamless communication.
 - **Admin Dashboard**: Built-in web interface for system-wide management of users, businesses, and bookings.
 - **API Documentation**: Interactive Swagger/OpenAPI documentation for easy endpoint testing.
 - **Role-based Access**: Specific permissions for Users, Businesses, and Admins.
@@ -38,6 +39,7 @@ Server will run on the `PORT` from `.env` (default 5000).
 ## Documentation & Administration
 
 - **API Docs**: Access the interactive Swagger UI at `http://localhost:5000/api-docs`
+- **WebSocket Guide**: Detailed real-time messaging implementation details in `WEBSOCKET.md`
 - **Admin Panel**: Access the management dashboard at `http://localhost:5000/admin.html`
 
 ## Testing
@@ -52,5 +54,6 @@ npm test
 - `/api/auth` - Registration, Login, and User Profile
 - `/api/businesses` - Listing (search/filter), management, and owner views
 - `/api/bookings` - Availability checks, scheduling, status tracking, and cancellation
+- `/api/messages` - Message history and conversation management
 - `/api/admin` - Global statistics and administrative management of users, businesses, and bookings
 - `/api-docs` - Swagger UI documentation

@@ -20,4 +20,14 @@ userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+// Ensure dates are returned in ISO format
+userSchema.set('toJSON', {
+  transform: function(doc, ret) {
+    if (ret.createdAt) ret.createdAt = ret.createdAt.toISOString();
+    if (ret.updatedAt) ret.updatedAt = ret.updatedAt.toISOString();
+    delete ret.password;
+    return ret;
+  }
+});
+
 module.exports = mongoose.model('User', userSchema);

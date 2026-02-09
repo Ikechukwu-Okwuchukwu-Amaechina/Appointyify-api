@@ -10,4 +10,14 @@ const bookingSchema = new mongoose.Schema({
   notes: { type: String },
 }, { timestamps: true });
 
+// Ensure dates are returned in ISO format
+bookingSchema.set('toJSON', {
+  transform: function(doc, ret) {
+    if (ret.date) ret.date = ret.date.toISOString();
+    if (ret.createdAt) ret.createdAt = ret.createdAt.toISOString();
+    if (ret.updatedAt) ret.updatedAt = ret.updatedAt.toISOString();
+    return ret;
+  }
+});
+
 module.exports = mongoose.model('Booking', bookingSchema);
