@@ -4,11 +4,11 @@ Quick starter for the API using Express + Mongoose. This API handles authenticat
 
 ## Features
 
-- **Authentication**: JWT-based registration and login with password hashing.
+- **Authentication**: JWT-based registration and login, profile management, and email-based password recovery.
 - **Business Management**: CRUD operations with search, category filtering, and pagination support.
 - **Booking System**: Automated slot generation based on working hours, availability checking, and appointment lifecycle management (confirm/cancel).
-- **Real-time Messaging**: WebSocket-based chat system between clients and businesses for seamless communication.
-- **Admin Dashboard**: Built-in web interface for system-wide management of users, businesses, and bookings.
+- **Messaging System**: WebSocket-based real-time chat between clients and businesses with REST API fallbacks.
+- **Admin Dashboard**: Built-in web interface for system-wide management of users (including role updates), businesses, and bookings.
 - **API Documentation**: Interactive Swagger/OpenAPI documentation for easy endpoint testing.
 - **Role-based Access**: Specific permissions for Users, Businesses, and Admins.
 - **Testing**: Integrated test suite using Jest and Supertest.
@@ -22,7 +22,7 @@ npm install
 
 2. **Start MongoDB locally** (e.g., `mongod` or your MongoDB service).
 
-3. **Copy `.env` and update secrets** (e.g., `MONGODB_URI`, `JWT_SECRET`).
+3. **Copy `.env` and update secrets** (e.g., `MONGODB_URI`, `JWT_SECRET`, and `SMTP` credentials for emails).
 
 4. **Run the server:**
 
@@ -51,9 +51,9 @@ npm test
 
 ## API Routes
 
-- `/api/auth` - Registration, Login, and User Profile
+- `/api/auth` - Registration, Login, Profile Updates, and Password Reset
 - `/api/businesses` - Listing (search/filter), management, and owner views
 - `/api/bookings` - Availability checks, scheduling, status tracking, and cancellation
-- `/api/messages` - Message history and conversation management
-- `/api/admin` - Global statistics and administrative management of users, businesses, and bookings
+- `/api/messages` - Real-time chat history, REST fallback messaging, and conversation management
+- `/api/admin` - Global statistics and administrative management of users (including role management), businesses, and bookings
 - `/api-docs` - Swagger UI documentation

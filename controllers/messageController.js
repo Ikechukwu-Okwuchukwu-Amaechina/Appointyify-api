@@ -127,3 +127,43 @@ exports.markMessagesAsRead = async (req, res) => {
     res.status(500).json({ msg: 'Server error', error: err.message });
   }
 };
+
+// Send a message via REST API (fallback for WebSocket)
+exports.sendMessage = async (req, res) => {
+  try {
+    const { bookingId, content } = req.body;
+    
+    if (!bookingId || !content) {
+      return res.status(400).json({ msg: 'bookingId and content are required' });
+    }
+    
+    // Verify booking exists
+    const booking = await Booking.findById(bookingId).populate('business');
+    if (!booking) {
+      return res.status(404).json({ msg: 'Booking not found' });
+    }
+    
+    // Determine sender type
+    const isClient = String(booking.user) === String(req.user._id);
+    const isBusiness = String(booking.business.owner) === String(req.user._id);
+    
+    if (!isClient && !isBusiness && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'Unauthorized' });
+    }
+    
+    const senderType = isClient ? 'client' : 'business';
+    
+    const message = await Message.create({
+      booking: bookingId,
+      sender: req.user._id,
+      senderType,
+      content,
+    });
+    
+    await message.populate('sender', 'name email');
+    
+    res.status(201).json(message);
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+};

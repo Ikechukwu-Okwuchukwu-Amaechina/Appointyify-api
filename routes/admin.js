@@ -88,6 +88,38 @@ router.delete('/users/:id', adminController.deleteUser);
 
 /**
  * @swagger
+ * /api/admin/users/{id}/role:
+ *   put:
+ *     summary: Update user role (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [user, business, admin]
+ *     responses:
+ *       200:
+ *         description: User role updated
+ */
+router.put('/users/:id/role', adminController.updateUserRole);
+
+/**
+ * @swagger
  * /api/admin/businesses:
  *   get:
  *     summary: Get all businesses (admin only)

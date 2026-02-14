@@ -93,6 +93,7 @@ router.get('/', getAllBusinesses);
  *         description: List of my businesses
  */
 router.get('/mine', protect, require('../controllers/businessController').getMyBusinesses);
+router.get('/my-business', protect, require('../controllers/businessController').getMyBusinesses);
 
 /**
  * @swagger

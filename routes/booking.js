@@ -50,8 +50,27 @@ const { idValidator } = require('../validators/idValidator');
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Booking'
+ *   get:
+ *     summary: Get user's own bookings
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, cancelled]
+ *       - in: query
+ *         name: business
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of bookings
  */
 router.post('/', protect, bookingValidator, createBooking);
+router.get('/', protect, getMyBookings);
 
 /**
  * @swagger
@@ -148,8 +167,23 @@ router.get('/business/:businessId', protect, getBusinessBookings);
  *     responses:
  *       200:
  *         description: Booking cancelled
+ *   put:
+ *     summary: Cancel a booking
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Booking cancelled
  */
 router.patch('/:id/cancel', protect, idValidator, cancelBooking);
+router.put('/:id/cancel', protect, idValidator, cancelBooking);
 
 /**
  * @swagger
@@ -202,7 +236,32 @@ router.patch('/:id/status', protect, idValidator, updateBookingStatus);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Booking'
+ *   put:
+ *     summary: Update booking status (business owner only)
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [pending, confirmed, cancelled]
+ *     responses:
+ *       200:
+ *         description: Status updated
  */
 router.get('/:id', protect, idValidator, getBookingById);
+router.put('/:id', protect, idValidator, updateBookingStatus);
 
 module.exports = router;

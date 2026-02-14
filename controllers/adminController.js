@@ -68,6 +68,28 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+exports.updateUserRole = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { role } = req.body;
+    
+    if (!role || !['user', 'business', 'admin'].includes(role)) {
+      return res.status(400).json({ msg: 'Invalid role. Must be user, business, or admin' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+    
+    user.role = role;
+    await user.save();
+    
+    res.json({ msg: 'User role updated', user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
 exports.getBusinesses = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, category, owner } = req.query;
