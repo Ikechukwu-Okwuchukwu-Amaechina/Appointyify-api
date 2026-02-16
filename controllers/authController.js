@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const cloudinary = require('../config/cloudinary');
 
 exports.register = async (req, res) => {
   const errors = validationResult(req);
@@ -153,5 +154,51 @@ exports.resetPassword = async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
+  }
+};
+
+// Upload profile image
+exports.uploadProfileImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No image file provided' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    // Delete old image from Cloudinary if it exists
+    if (user.profileImagePublicId) {
+      await cloudinary.uploader.destroy(user.profileImagePublicId);
+    }
+
+    user.profileImage = req.file.path;
+    user.profileImagePublicId = req.file.filename;
+    await user.save();
+
+    res.json({ msg: 'Profile image uploaded successfully', profileImage: user.profileImage, user });
+  } catch (err) {
+    res.status(500).json({ msg: 'Image upload failed', error: err.message });
+  }
+};
+
+// Delete profile image
+exports.deleteProfileImage = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    if (!user.profileImagePublicId) {
+      return res.status(400).json({ msg: 'No profile image to delete' });
+    }
+
+    await cloudinary.uploader.destroy(user.profileImagePublicId);
+    user.profileImage = undefined;
+    user.profileImagePublicId = undefined;
+    await user.save();
+
+    res.json({ msg: 'Profile image deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Image deletion failed', error: err.message });
   }
 };

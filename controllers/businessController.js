@@ -1,6 +1,7 @@
 const Business = require('../models/Business');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
+const cloudinary = require('../config/cloudinary');
 
 exports.createBusiness = async (req, res) => {
   const errors = validationResult(req);
@@ -86,5 +87,59 @@ exports.getMyBusinesses = async (req, res) => {
     res.json(list);
   } catch (err) {
     res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+};
+
+// Upload business image
+exports.uploadBusinessImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No image file provided' });
+    }
+
+    const business = await Business.findById(req.params.id);
+    if (!business) return res.status(404).json({ msg: 'Business not found' });
+
+    if (String(business.owner) !== String(req.user._id) && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'Forbidden' });
+    }
+
+    // Delete old image from Cloudinary if it exists
+    if (business.imagePublicId) {
+      await cloudinary.uploader.destroy(business.imagePublicId);
+    }
+
+    business.image = req.file.path;
+    business.imagePublicId = req.file.filename;
+    await business.save();
+
+    res.json({ msg: 'Image uploaded successfully', image: business.image, business });
+  } catch (err) {
+    res.status(500).json({ msg: 'Image upload failed', error: err.message });
+  }
+};
+
+// Delete business image
+exports.deleteBusinessImage = async (req, res) => {
+  try {
+    const business = await Business.findById(req.params.id);
+    if (!business) return res.status(404).json({ msg: 'Business not found' });
+
+    if (String(business.owner) !== String(req.user._id) && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'Forbidden' });
+    }
+
+    if (!business.imagePublicId) {
+      return res.status(400).json({ msg: 'No image to delete' });
+    }
+
+    await cloudinary.uploader.destroy(business.imagePublicId);
+    business.image = undefined;
+    business.imagePublicId = undefined;
+    await business.save();
+
+    res.json({ msg: 'Image deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Image deletion failed', error: err.message });
   }
 };
