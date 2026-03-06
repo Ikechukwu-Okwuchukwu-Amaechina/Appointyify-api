@@ -559,8 +559,24 @@ Most endpoints require a Bearer token in the Authorization header:
           },
           responses: {
             201: {
-              description: 'User registered successfully',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } },
+              description: 'User registered successfully. For business accounts, an OTP is sent to email and must be verified via /api/auth/verify-otp.',
+              content: {
+                'application/json': {
+                  schema: {
+                    oneOf: [
+                      { $ref: '#/components/schemas/AuthResponse' },
+                      {
+                        type: 'object',
+                        properties: {
+                          msg: { type: 'string', example: 'OTP sent to email' },
+                          requireOTP: { type: 'boolean', example: true },
+                          email: { type: 'string', example: 'business@example.com' }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
             },
           },
         },

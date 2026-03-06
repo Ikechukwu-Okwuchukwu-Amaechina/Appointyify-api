@@ -20,8 +20,43 @@ exports.register = async (req, res) => {
     user = new User({ name, email, password, phone, role, companyName });
     await user.save();
 
+    // Business accounts require OTP verification before getting a token
+    if (role === 'business') {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.otp = crypto.createHash('sha256').update(otp).digest('hex');
+      user.otpExpire = Date.now() + 10 * 60 * 1000; // 10 mins expiry
+      await user.save();
+
+      console.log(`Sending registration OTP to ${user.email} with OTP: ${otp}`);
+
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: process.env.SMTP_PORT || 587,
+          secure: process.env.SMTP_PORT === '465',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+          tls: { rejectUnauthorized: false }
+        });
+
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || 'noreply@appointyify.com',
+          to: user.email,
+          subject: 'Verify Your Business Account',
+          text: `Welcome to Appointyify! Your verification OTP is: ${otp}. It will expire in 10 minutes.`
+        });
+      } catch (emailErr) {
+        console.error('OTP send error:', emailErr);
+        return res.status(500).json({ msg: 'Failed to send OTP email', error: emailErr.message });
+      }
+
+      return res.status(201).json({ msg: 'OTP sent to email', requireOTP: true, email: user.email });
+    }
+
     const payload = { user: { id: user.id } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '30m' }); // Changed 1h to 30m!
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '30m' });
     res.status(201).json({ token });
   } catch (err) {
     console.error(err.message);
