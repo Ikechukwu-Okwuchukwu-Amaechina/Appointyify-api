@@ -26,7 +26,19 @@ const io = new Server(server, {
   }
 });
 
-app.use(helmet()); // Setting CSP, X-Frame-Options, HSTS... you name it!
+// Setting CSP, X-Frame-Options, HSTS... you name it!
+// BUT we tell Helmet to allow our Swagger CDN links, otherwise it blocks them!
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      imgSrc: ["'self'", "data:", "https://res.cloudinary.com"], // Allowing Cloudinary images too just in case!
+      connectSrc: ["'self'", "https://api.cloudinary.com"]
+    },
+  },
+}));
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://127.0.0.1:5500',
   credentials: true
