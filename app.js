@@ -136,9 +136,13 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.set('io', io);
 
-// Fixing Vercel Swagger UI CSS issue by loading from CDN!
+// Fixing Vercel Swagger UI CSS and JS issues by loading all assets from CDNs!
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui.min.css'
+  customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui.min.css',
+  customJs: [
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-bundle.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-standalone-preset.min.js'
+  ]
 }));
 
 app.use('/api/auth', require('./routes/auth'));
