@@ -4,6 +4,9 @@ This document describes the WebSocket implementation for real-time messaging bet
 
 ## Connection
 
+> [!IMPORTANT]
+> **CORS Restrictions**: The WebSocket server strictly accepts connections from `http://localhost:5500` by default. You can override this using the `CLIENT_URL` environment variable. Attempting to connect from other origins will result in a CORS error.
+
 ### Establishing a Connection
 
 ```javascript
@@ -11,8 +14,9 @@ const io = require('socket.io-client');
 
 const socket = io('http://localhost:5000', {
   auth: {
-    token: 'YOUR_JWT_TOKEN' // JWT token from /api/auth/login or /api/auth/register
-  }
+    token: 'YOUR_JWT_TOKEN' // JWT token from /api/auth/verify-otp or /api/auth/register
+  },
+  withCredentials: true // Required for secure environment cookies
 });
 
 // Connection successful
@@ -205,7 +209,8 @@ const io = require('socket.io-client');
 
 // Connect with authentication
 const socket = io('http://localhost:5000', {
-  auth: { token: localStorage.getItem('token') }
+  auth: { token: localStorage.getItem('token') },
+  withCredentials: true
 });
 
 // Handle connection
@@ -265,7 +270,8 @@ function ChatComponent({ bookingId, userType }) {
   useEffect(() => {
     // Connect to WebSocket
     const newSocket = io('http://localhost:5000', {
-      auth: { token: localStorage.getItem('token') }
+      auth: { token: localStorage.getItem('token') },
+      withCredentials: true
     });
 
     newSocket.on('connect', () => {

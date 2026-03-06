@@ -453,6 +453,24 @@ Most endpoints require a Bearer token in the Authorization header:
               $ref: '#/components/schemas/User'
             }
           }
+        },
+        LoginResponse: {
+          type: 'object',
+          properties: {
+            msg: { 
+              type: 'string',
+              example: 'OTP sent to email'
+            },
+            requireOTP: {
+              type: 'boolean',
+              example: true
+            },
+            email: {
+              type: 'string',
+              description: 'User email address',
+              example: 'john.doe@example.com'
+            }
+          }
         }
       },
       responses: {
@@ -567,9 +585,46 @@ Most endpoints require a Bearer token in the Authorization header:
           },
           responses: {
             200: {
-              description: 'Login successful',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } },
+              description: 'Login successful, OTP sent to email',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginResponse' } } },
             },
+            429: {
+              description: 'Too many login attempts, please try again after 15 minutes'
+            }
+          },
+        },
+      },
+      '/api/auth/verify-otp': {
+        post: {
+          summary: 'Verify OTP for Multi-Factor Authentication',
+          tags: ['Auth'],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email', 'otp'],
+                  properties: {
+                    email: { type: 'string', example: 'john.doe@example.com' },
+                    otp: { type: 'string', example: '123456' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'OTP verified successfully',
+              content: { 'application/json': { schema: { type: 'object', properties: { token: { type: 'string' } } } } },
+              headers: {
+                'Set-Cookie': {
+                  description: 'Contains the JWT token in a secure HttpOnly cookie',
+                  schema: { type: 'string' }
+                }
+              }
+            },
+            400: { description: 'Invalid email or OTP' },
           },
         },
       },

@@ -20,7 +20,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5500', // Restricting origin to something specific!
+    origin: process.env.CLIENT_URL || 'http://127.0.0.1:5500', // Restricting origin to something specific!
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -28,7 +28,7 @@ const io = new Server(server, {
 
 app.use(helmet()); // Setting CSP, X-Frame-Options, HSTS... you name it!
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5500',
+  origin: process.env.CLIENT_URL || 'http://127.0.0.1:5500',
   credentials: true
 }));
 app.use(express.json());
