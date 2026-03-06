@@ -18,6 +18,14 @@ const registerSchema = Joi.object({
   role: Joi.string().valid('user', 'business', 'admin').optional(),
   phone: Joi.string().pattern(/^\d{10,15}$/).optional().messages({
     'string.pattern.base': 'Phone number must be between 10 and 15 digits only'
+  }),
+  companyName: Joi.when('role', {
+    is: 'business',
+    then: Joi.string().required().messages({
+      'string.empty': 'Company name is required for business accounts',
+      'any.required': 'Company name is required for business accounts'
+    }),
+    otherwise: Joi.string().optional()
   })
 });
 

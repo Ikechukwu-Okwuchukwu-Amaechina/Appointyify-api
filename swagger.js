@@ -551,6 +551,7 @@ Most endpoints require a Bearer token in the Authorization header:
                     password: { type: 'string', example: 'password123' },
                     phone: { type: 'string', example: '+1234567890' },
                     role: { type: 'string', enum: ['user', 'business', 'admin'] },
+                    companyName: { type: 'string', example: 'Acme Corp', description: 'Required when role is business' },
                   },
                 },
               },

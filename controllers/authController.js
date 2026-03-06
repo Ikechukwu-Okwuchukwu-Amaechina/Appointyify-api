@@ -12,12 +12,12 @@ exports.register = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { name, email, password, phone, role } = req.body;
+  const { name, email, password, phone, role, companyName } = req.body;
   try {
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ msg: 'User exists' });
 
-    user = new User({ name, email, password, phone, role });
+    user = new User({ name, email, password, phone, role, companyName });
     await user.save();
 
     const payload = { user: { id: user.id } };
