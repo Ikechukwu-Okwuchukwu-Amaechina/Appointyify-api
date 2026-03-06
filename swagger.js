@@ -217,10 +217,31 @@ Most endpoints require a Bearer token in the Authorization header:
               default: true,
               example: true
             },
-            image: {
+            minPrice: {
+              type: 'number',
+              description: 'Minimum service price',
+              example: 20
+            },
+            maxPrice: {
+              type: 'number',
+              description: 'Maximum service price',
+              example: 150
+            },
+            priceRange: {
               type: 'string',
-              description: 'URL of the business image on Cloudinary',
-              example: 'https://res.cloudinary.com/your_cloud/image/upload/v123/appointyify/businesses/abc.jpg'
+              description: 'Human-readable price range label (e.g. "$20 - $150")',
+              example: '$20 - $150'
+            },
+            images: {
+              type: 'array',
+              description: 'List of business images stored on Cloudinary',
+              items: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string', example: 'https://res.cloudinary.com/your_cloud/image/upload/v123/appointyify/businesses/abc.jpg' },
+                  publicId: { type: 'string', example: 'appointyify/businesses/abc' }
+                }
+              }
             },
             createdAt: { 
               type: 'string', 
@@ -645,6 +666,33 @@ Most endpoints require a Bearer token in the Authorization header:
           },
         },
       },
+      '/api/auth/resend-otp': {
+        post: {
+          summary: 'Resend OTP to email',
+          tags: ['Auth'],
+          description: 'Generates and sends a fresh OTP to the given email. Rate-limited to 3 requests per 10 minutes.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email'],
+                  properties: {
+                    email: { type: 'string', format: 'email', example: 'john.doe@example.com' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'New OTP sent to email', content: { 'application/json': { schema: { type: 'object', properties: { msg: { type: 'string', example: 'New OTP sent to email' } } } } } },
+            400: { description: 'Email is required or invalid' },
+            429: { description: 'Too many OTP resend requests, please try again after 10 minutes' },
+            500: { description: 'Failed to send OTP email' },
+          },
+        },
+      },
       '/api/auth/me': {
         get: {
           summary: 'Get current user profile',
@@ -804,6 +852,14 @@ Most endpoints require a Bearer token in the Authorization header:
           responses: { 200: { description: 'List of businesses' } },
         },
       },
+      '/api/businesses/profile': {
+        get: {
+          summary: 'Get my businesses (alias)',
+          tags: ['Business'],
+          security: [{ bearerAuth: [] }],
+          responses: { 200: { description: 'List of my businesses' } },
+        },
+      },
       '/api/businesses/mine': {
         get: {
           summary: 'Get my businesses',
@@ -852,7 +908,7 @@ Most endpoints require a Bearer token in the Authorization header:
       },
       '/api/businesses/{id}/image': {
         post: {
-          summary: 'Upload business image',
+          summary: 'Upload one or more business images (up to 10)',
           tags: ['Business'],
           security: [{ bearerAuth: [] }],
           parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string' } }],
@@ -862,31 +918,49 @@ Most endpoints require a Bearer token in the Authorization header:
               'multipart/form-data': {
                 schema: {
                   type: 'object',
-                  required: ['image'],
+                  required: ['images'],
                   properties: {
-                    image: { type: 'string', format: 'binary', description: 'Image file (jpg, jpeg, png, webp - max 5MB)' },
+                    images: {
+                      type: 'array',
+                      items: { type: 'string', format: 'binary' },
+                      description: 'One or more image files (jpg, jpeg, png, webp - max 5MB each, up to 10 files)'
+                    },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'Image uploaded successfully' },
-            400: { description: 'No image file provided' },
+            200: { description: 'Images uploaded successfully', content: { 'application/json': { schema: { type: 'object', properties: { msg: { type: 'string' }, images: { type: 'array', items: { type: 'object', properties: { url: { type: 'string' }, publicId: { type: 'string' } } } } } } } } },
+            400: { description: 'No image files provided' },
             403: { description: 'Forbidden - not the business owner' },
             404: { description: 'Business not found' },
           },
         },
         delete: {
-          summary: 'Delete business image',
+          summary: 'Delete a specific business image by publicId',
           tags: ['Business'],
           security: [{ bearerAuth: [] }],
           parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['publicId'],
+                  properties: {
+                    publicId: { type: 'string', description: 'Cloudinary public ID of the image to delete', example: 'appointyify/businesses/abc' },
+                  },
+                },
+              },
+            },
+          },
           responses: {
             200: { description: 'Image deleted successfully' },
-            400: { description: 'No image to delete' },
+            400: { description: 'publicId is required' },
             403: { description: 'Forbidden - not the business owner' },
-            404: { description: 'Business not found' },
+            404: { description: 'Business or image not found' },
           },
         },
       },

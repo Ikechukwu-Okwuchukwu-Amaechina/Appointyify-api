@@ -90,11 +90,11 @@ exports.getMyBusinesses = async (req, res) => {
   }
 };
 
-// Upload business image
+// Upload one or more business images (up to 10 per request)
 exports.uploadBusinessImage = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ msg: 'No image file provided' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ msg: 'No image files provided' });
     }
 
     const business = await Business.findById(req.params.id);
@@ -104,22 +104,19 @@ exports.uploadBusinessImage = async (req, res) => {
       return res.status(403).json({ msg: 'Forbidden' });
     }
 
-    // Delete old image from Cloudinary if it exists
-    if (business.imagePublicId) {
-      await cloudinary.uploader.destroy(business.imagePublicId);
-    }
-
-    business.image = req.file.path;
-    business.imagePublicId = req.file.filename;
+    // Append newly uploaded files to the images array
+    req.files.forEach(file => {
+      business.images.push({ url: file.path, publicId: file.filename });
+    });
     await business.save();
 
-    res.json({ msg: 'Image uploaded successfully', image: business.image, business });
+    res.json({ msg: 'Images uploaded successfully', images: business.images, business });
   } catch (err) {
     res.status(500).json({ msg: 'Image upload failed', error: err.message });
   }
 };
 
-// Delete business image
+// Delete a specific business image by publicId (sent in request body)
 exports.deleteBusinessImage = async (req, res) => {
   try {
     const business = await Business.findById(req.params.id);
@@ -129,16 +126,17 @@ exports.deleteBusinessImage = async (req, res) => {
       return res.status(403).json({ msg: 'Forbidden' });
     }
 
-    if (!business.imagePublicId) {
-      return res.status(400).json({ msg: 'No image to delete' });
-    }
+    const { publicId } = req.body;
+    if (!publicId) return res.status(400).json({ msg: 'publicId is required' });
 
-    await cloudinary.uploader.destroy(business.imagePublicId);
-    business.image = undefined;
-    business.imagePublicId = undefined;
+    const imageIndex = business.images.findIndex(img => img.publicId === publicId);
+    if (imageIndex === -1) return res.status(404).json({ msg: 'Image not found' });
+
+    await cloudinary.uploader.destroy(publicId);
+    business.images.splice(imageIndex, 1);
     await business.save();
 
-    res.json({ msg: 'Image deleted successfully' });
+    res.json({ msg: 'Image deleted successfully', images: business.images });
   } catch (err) {
     res.status(500).json({ msg: 'Image deletion failed', error: err.message });
   }

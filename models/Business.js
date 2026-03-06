@@ -10,8 +10,15 @@ const businessSchema = new mongoose.Schema({
   email: { type: String },
   workingHours: { type: String },
   slotDuration: { type: Number, default: 30 },
-  image: { type: String },
-  imagePublicId: { type: String },
+  minPrice: { type: Number },
+  maxPrice: { type: Number },
+  priceRange: { type: String },
+  images: [
+    {
+      url: { type: String },
+      publicId: { type: String },
+    }
+  ],
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
