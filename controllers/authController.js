@@ -155,6 +155,52 @@ exports.verifyOTP = async (req, res) => {
   }
 };
 
+exports.resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ msg: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: 'Invalid email' });
+
+    // Generate a fresh OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = crypto.createHash('sha256').update(otp).digest('hex');
+    user.otpExpire = Date.now() + 10 * 60 * 1000; // 10 mins
+    await user.save();
+
+    console.log(`Resending OTP to ${user.email} with OTP: ${otp}`);
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: process.env.SMTP_PORT || 587,
+        secure: process.env.SMTP_PORT === '465',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+        tls: { rejectUnauthorized: false }
+      });
+
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || 'noreply@appointyify.com',
+        to: user.email,
+        subject: 'Your New OTP',
+        text: `Your new Appointyify OTP is: ${otp}. It will expire in 10 minutes.`
+      });
+    } catch (emailErr) {
+      console.error('Resend OTP email error:', emailErr);
+      return res.status(500).json({ msg: 'Failed to send OTP email', error: emailErr.message });
+    }
+
+    res.json({ msg: 'New OTP sent to email' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
 exports.getMe = async (req, res) => {
   res.json(req.user);
 };
