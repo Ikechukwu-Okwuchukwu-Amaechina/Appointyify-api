@@ -8,11 +8,16 @@ const messageSchema = new mongoose.Schema({
   isRead: { type: Boolean, default: false },
 }, { timestamps: true });
 
-// Ensure dates are returned in ISO format
+// Ensure dates are returned in ISO format and strip internal fields
 messageSchema.set('toJSON', {
   transform: function(doc, ret) {
     if (ret.createdAt) ret.createdAt = ret.createdAt.toISOString();
     if (ret.updatedAt) ret.updatedAt = ret.updatedAt.toISOString();
+    
+    // Changing _id to id and stripping internals!
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
     return ret;
   }
 });
