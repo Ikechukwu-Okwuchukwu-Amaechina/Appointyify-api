@@ -4,8 +4,11 @@ const User = require('../models/User');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const cloudinary = require('../config/cloudinary');
+const bcrypt = require('bcryptjs'); // Need this to check old passwords!
 
 exports.register = async (req, res) => {
+  // We're expecting Joi validation now, so no express-validator errors here!
+  // BUT just in case:
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -18,7 +21,7 @@ exports.register = async (req, res) => {
     await user.save();
 
     const payload = { user: { id: user.id } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '1h' });
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '30m' }); // Changed 1h to 30m!
     res.status(201).json({ token });
   } catch (err) {
     console.error(err.message);
@@ -38,9 +41,79 @@ exports.login = async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
 
+    // Session fixation fix! We regenerate the session every time someone logs in!
+    req.session.regenerate(async (err) => {
+      if (err) return res.status(500).json({ msg: 'Session error' });
+
+      // MFA Time! Generate a 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.otp = crypto.createHash('sha256').update(otp).digest('hex');
+      user.otpExpire = Date.now() + 10 * 60 * 1000; // 10 mins expiry
+      await user.save();
+
+      console.log(`Sending OTP Email to ${user.email} with OTP: ${otp}`);
+
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: process.env.SMTP_PORT || 587,
+          secure: process.env.SMTP_PORT === '465', // Fixing SMTP secure mismatch
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+          tls: { rejectUnauthorized: false } // Helps with weird cert issues
+        });
+
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || 'noreply@appointyify.com',
+          to: user.email,
+          subject: 'Your Login OTP',
+          text: `Your Appointyify OTP is: ${otp}. It will expire in 10 minutes.`
+        });
+      } catch(emailErr) {
+        console.error("OTP send error:", emailErr);
+        return res.status(500).json({ msg: 'Failed to send OTP email', error: emailErr.message });
+      }
+
+      res.json({ msg: 'OTP sent to email', requireOTP: true, email: user.email });
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
+// Adding this new verifyOTP function for the MFA process!
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ msg: 'Email and OTP required' });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: 'Invalid email' });
+
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    
+    if (user.otp !== hashedOTP || user.otpExpire < Date.now()) {
+      return res.status(400).json({ msg: 'Invalid or expired OTP' });
+    }
+
+    // Reset OTP so it can't be used again
+    user.otp = undefined;
+    user.otpExpire = undefined;
+    await user.save();
+
     const payload = { user: { id: user.id } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '1h' });
-    res.json({ token });
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '30m' }); // 30m timeout!
+    
+    // Setting secure cookie flags!
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 60 * 1000
+    }).json({ token });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -98,11 +171,12 @@ exports.forgotPassword = async (req, res) => {
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: process.env.SMTP_PORT || 587,
-      secure: false,
+      secure: process.env.SMTP_PORT === '465', // Fixing SMTP boolean mismatch!
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      tls: { rejectUnauthorized: false } // Less complaining about SSL certs
     });
 
     const message = {
@@ -143,6 +217,24 @@ exports.resetPassword = async (req, res) => {
     });
 
     if (!user) return res.status(400).json({ msg: 'Invalid or expired token' });
+
+    // Let's make sure they aren't reusing old passwords!
+    if (user.passwordHistory && user.passwordHistory.length > 0) {
+      for (const oldHash of user.passwordHistory) {
+        const isMatch = await bcrypt.compare(password, oldHash);
+        if (isMatch) return res.status(400).json({ msg: 'Cannot reuse a previous password!' });
+      }
+    }
+
+    // Save the current password into history before changing it
+    if (user.password) {
+      if (!user.passwordHistory) user.passwordHistory = [];
+      user.passwordHistory.push(user.password);
+      // Keep only the last 3 passwords to save some space
+      if (user.passwordHistory.length > 3) {
+        user.passwordHistory.shift();
+      }
+    }
 
     // Set new password
     user.password = password;

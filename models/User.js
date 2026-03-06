@@ -11,6 +11,11 @@ const userSchema = new mongoose.Schema({
   profileImagePublicId: { type: String },
   resetPasswordToken: { type: String },
   resetPasswordExpire: { type: Date },
+  // Keeping track of old passwords so you don't use them again!
+  passwordHistory: [{ type: String }],
+  // OTP for MFA!
+  otp: { type: String },
+  otpExpire: { type: Date }
 }, { timestamps: true });
 
 userSchema.pre('save', async function (next) {
@@ -30,6 +35,14 @@ userSchema.set('toJSON', {
     if (ret.createdAt) ret.createdAt = ret.createdAt.toISOString();
     if (ret.updatedAt) ret.updatedAt = ret.updatedAt.toISOString();
     delete ret.password;
+    delete ret.passwordHistory;
+    delete ret.otp;
+    delete ret.otpExpire;
+    
+    // Changing _id to id and stripping internals like a pro! 
+    ret.id = ret._id.toString();
+    delete ret._id;
+    delete ret.__v;
     return ret;
   }
 });

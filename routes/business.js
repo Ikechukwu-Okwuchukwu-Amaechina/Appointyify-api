@@ -17,8 +17,12 @@ const { uploadBusinessImage: uploadBusinessImageMiddleware } = require('../middl
 
 router.post('/', protect, createBusinessValidator, createBusiness);
 router.get('/', getAllBusinesses);
+
+// Fixing the 404 routing bug by explicitly adding the /profile route here!
+router.get('/profile', protect, getMyBusinesses);
 router.get('/mine', protect, getMyBusinesses);
 router.get('/my-business', protect, getMyBusinesses);
+
 router.get('/:id', idValidator, getBusinessById);
 router.patch('/:id', protect, idValidator, updateBusinessValidator, updateBusiness);
 router.delete('/:id', protect, idValidator, deleteBusiness);
