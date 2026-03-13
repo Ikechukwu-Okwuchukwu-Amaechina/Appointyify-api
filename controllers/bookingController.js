@@ -41,26 +41,47 @@ exports.createBooking = async (req, res) => {
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   try {
-    const { business: businessId, date, startTime, notes } = req.body;
-    if (!businessId || !date || !startTime) return res.status(400).json({ msg: 'business, date and startTime are required' });
+    const { business: businessId, date, days, startTime, notes } = req.body;
+    if (!businessId) return res.status(400).json({ msg: 'business is required' });
 
     const business = await Business.findById(businessId);
     if (!business) return res.status(404).json({ msg: 'Business not found' });
 
-    const dateObj = parseDateOnly(date);
-    if (!dateObj) return res.status(400).json({ msg: 'Invalid date format, use YYYY-MM-DD' });
-
     const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30);
-    const match = slots.find(s => s.startTime === startTime);
-    if (!match) return res.status(400).json({ msg: 'Requested time is not an available slot' });
 
-    // prevent double booking for exact same startTime
-    const existing = await Booking.findOne({ business: businessId, date: dateObj, startTime, status: { $ne: 'cancelled' } });
-    if (existing) return res.status(409).json({ msg: 'Slot already booked' });
+    // If a single date booking
+    if (date) {
+      const dateObj = parseDateOnly(date);
+      if (!dateObj) return res.status(400).json({ msg: 'Invalid date format, use YYYY-MM-DD' });
+      const match = slots.find(s => s.startTime === startTime);
+      if (!match) return res.status(400).json({ msg: 'Requested time is not an available slot' });
 
-    const bookingData = { user: req.user._id, business: businessId, date: dateObj, startTime, endTime: match.endTime, notes };
-    const booking = await Booking.create(bookingData);
-    res.status(201).json(booking);
+      // prevent double booking for exact same startTime on that date
+      const existing = await Booking.findOne({ business: businessId, date: dateObj, startTime, status: { $ne: 'cancelled' } });
+      if (existing) return res.status(409).json({ msg: 'Slot already booked' });
+
+      const bookingData = { user: req.user._id, business: businessId, date: dateObj, startTime, endTime: match.endTime, notes, recurring: false };
+      const booking = await Booking.create(bookingData);
+      return res.status(201).json(booking);
+    }
+
+    // If recurring days booking
+    if (days) {
+      // days expected to be normalized by validator (array of weekday names or numbers)
+      const normalizedDays = days.map(d => String(d).toLowerCase());
+      const match = slots.find(s => s.startTime === startTime);
+      if (!match) return res.status(400).json({ msg: 'Requested time is not an available slot' });
+
+      // prevent duplicate recurring for same business/days/startTime
+      const existing = await Booking.findOne({ business: businessId, recurring: true, days: { $all: normalizedDays }, startTime, status: { $ne: 'cancelled' } });
+      if (existing) return res.status(409).json({ msg: 'Recurring slot already exists' });
+
+      const bookingData = { user: req.user._id, business: businessId, days: normalizedDays, recurring: true, startTime, endTime: match.endTime, notes };
+      const booking = await Booking.create(bookingData);
+      return res.status(201).json(booking);
+    }
+
+    return res.status(400).json({ msg: 'Either date or days must be provided' });
   } catch (err) {
     res.status(400).json({ msg: 'Bad request', error: err.message });
   }
