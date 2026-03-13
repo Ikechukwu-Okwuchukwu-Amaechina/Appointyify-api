@@ -8,7 +8,10 @@ const businessSchema = new mongoose.Schema({
   address: { type: String },
   phone: { type: String },
   email: { type: String },
-  workingHours: { type: String },
+  // workingHours can be stored as:
+  //   per-day object: { monday: { open:'09:00', close:'17:00', enabled:true }, ... }
+  //   legacy string:  '09:00-17:00'
+  workingHours: { type: mongoose.Schema.Types.Mixed },
   slotDuration: { type: Number, default: 30 },
   minPrice: { type: Number },
   maxPrice: { type: Number },

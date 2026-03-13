@@ -9,6 +9,20 @@ function parseDateOnly(dateStr) {
   return d;
 }
 
+// Day-name helpers used for per-day working hours lookup
+const DAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
+/** Returns the nearest future Date (or today) for a given weekday name (e.g. 'monday') */
+function nextWeekdayDate(dayName) {
+  const target = DAY_NAMES.indexOf(dayName.toLowerCase());
+  if (target === -1) return new Date();
+  const now = new Date();
+  const diff = (target - now.getDay() + 7) % 7;
+  const d = new Date(now);
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
 function addMinutesToTime(timeStr, minutes) {
   const [h, m] = timeStr.split(':').map(Number);
   const dt = new Date(1970, 0, 1, h, m);
@@ -18,22 +32,49 @@ function addMinutesToTime(timeStr, minutes) {
   return `${hh}:${mm}`;
 }
 
-function generateSlotsFromWorkingHours(workingHours, slotDuration) {
-  // workingHours expected like "09:00-17:00"
-  if (!workingHours) return [];
-  const parts = workingHours.split('-');
-  if (parts.length !== 2) return [];
-  const [start, end] = parts;
+function buildSlotsFromRange(open, close, slotDuration) {
   const slots = [];
-  let cur = start;
+  let cur = open;
   while (true) {
     const next = addMinutesToTime(cur, slotDuration);
-    // stop if next is after end
-    if (next > end) break;
+    if (next > close) break;
     slots.push({ startTime: cur, endTime: next });
     cur = next;
   }
   return slots;
+}
+
+/**
+ * Generate time slots for a given date.
+ * workingHours can be:
+ *   - per-day object: { monday: { open:'09:00', close:'17:00', enabled:true }, ... }
+ *   - legacy string:  '09:00-17:00'  (applied to every day)
+ * dateObj is optional; if omitted, legacy string path is used.
+ */
+function generateSlotsFromWorkingHours(workingHours, slotDuration, dateObj) {
+  if (!workingHours) return [];
+
+  // Per-day object format
+  if (typeof workingHours === 'object' && !Array.isArray(workingHours)) {
+    if (!dateObj) return [];
+    const dayName = DAY_NAMES[dateObj.getDay()];
+    const dayConfig = workingHours[dayName];
+    // day disabled or missing
+    if (!dayConfig || dayConfig.enabled === false) return [];
+    const open  = dayConfig.open  || dayConfig.start || dayConfig.openTime;
+    const close = dayConfig.close || dayConfig.end   || dayConfig.closeTime;
+    if (!open || !close) return [];
+    return buildSlotsFromRange(open, close, slotDuration);
+  }
+
+  // Legacy string format: '09:00-17:00'
+  if (typeof workingHours === 'string') {
+    const parts = workingHours.split('-');
+    if (parts.length !== 2) return [];
+    return buildSlotsFromRange(parts[0], parts[1], slotDuration);
+  }
+
+  return [];
 }
 
 exports.createBooking = async (req, res) => {
@@ -47,14 +88,14 @@ exports.createBooking = async (req, res) => {
     const business = await Business.findById(businessId);
     if (!business) return res.status(404).json({ msg: 'Business not found' });
 
-    const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30);
-
     // If a single date booking
     if (date) {
       const dateObj = parseDateOnly(date);
       if (!dateObj) return res.status(400).json({ msg: 'Invalid date format, use YYYY-MM-DD' });
+      const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30, dateObj);
+      if (slots.length === 0) return res.status(400).json({ msg: 'Business is not open on that day' });
       const match = slots.find(s => s.startTime === startTime);
-      if (!match) return res.status(400).json({ msg: 'Requested time is not an available slot' });
+      if (!match) return res.status(400).json({ msg: `Requested time is not an available slot. Available slots: ${slots.map(s=>s.startTime).join(', ')}` });
 
       // prevent double booking for exact same startTime on that date
       const existing = await Booking.findOne({ business: businessId, date: dateObj, startTime, status: { $ne: 'cancelled' } });
@@ -69,8 +110,12 @@ exports.createBooking = async (req, res) => {
     if (days) {
       // days expected to be normalized by validator (array of weekday names or numbers)
       const normalizedDays = days.map(d => String(d).toLowerCase());
+      // For recurring, validate the slot against the first provided day
+      const sampleDateObj = nextWeekdayDate(normalizedDays[0]);
+      const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30, sampleDateObj);
+      if (slots.length === 0) return res.status(400).json({ msg: `Business is not open on ${normalizedDays[0]}` });
       const match = slots.find(s => s.startTime === startTime);
-      if (!match) return res.status(400).json({ msg: 'Requested time is not an available slot' });
+      if (!match) return res.status(400).json({ msg: `Requested time is not an available slot. Available slots: ${slots.map(s=>s.startTime).join(', ')}` });
 
       // prevent duplicate recurring for same business/days/startTime
       const existing = await Booking.findOne({ business: businessId, recurring: true, days: { $all: normalizedDays }, startTime, status: { $ne: 'cancelled' } });
@@ -125,11 +170,12 @@ exports.getAvailableSlots = async (req, res) => {
     const dateObj = parseDateOnly(date);
     if (!dateObj) return res.status(400).json({ msg: 'Invalid date format' });
 
-    const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30);
+    const slots = generateSlotsFromWorkingHours(business.workingHours, business.slotDuration || 30, dateObj);
+    if (slots.length === 0) return res.json({ open: false, slots: [], msg: 'Business is not open on that day' });
     const bookings = await Booking.find({ business: businessId, date: dateObj, status: { $ne: 'cancelled' } });
     const busy = new Set(bookings.map(b => b.startTime));
     const result = slots.map(s => ({ startTime: s.startTime, endTime: s.endTime, available: !busy.has(s.startTime) }));
-    res.json(result);
+    res.json({ open: true, slots: result });
   } catch (err) {
     res.status(500).json({ msg: 'Server error', error: err.message });
   }
