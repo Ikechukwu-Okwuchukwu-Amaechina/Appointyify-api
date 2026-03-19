@@ -22,6 +22,16 @@ const userImageStorage = new CloudinaryStorage({
   },
 });
 
+const bookingSampleStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => ({
+    folder: 'appointyify/bookings/samples',
+    resource_type: 'auto',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+  }),
+});
+
 // File filter - only allow images
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
@@ -29,6 +39,18 @@ const fileFilter = (req, file, cb) => {
   } else {
     cb(new Error('Only image files are allowed'), false);
   }
+};
+
+const bookingSampleFilter = (req, file, cb) => {
+  const isImage = file.mimetype.startsWith('image/');
+  const isPdf = file.mimetype === 'application/pdf';
+
+  if (isImage || isPdf) {
+    cb(null, true);
+    return;
+  }
+
+  cb(new Error('Only image files or PDF files are allowed'), false);
 };
 
 const uploadBusinessImage = multer({
@@ -43,4 +65,10 @@ const uploadUserImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
 
-module.exports = { uploadBusinessImage, uploadUserImage };
+const uploadBookingSample = multer({
+  storage: bookingSampleStorage,
+  fileFilter: bookingSampleFilter,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+module.exports = { uploadBusinessImage, uploadUserImage, uploadBookingSample };

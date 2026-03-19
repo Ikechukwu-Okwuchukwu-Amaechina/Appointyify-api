@@ -12,8 +12,9 @@ const {
 } = require('../controllers/bookingController');
 const { bookingValidator } = require('../validators/bookingValidators');
 const { idValidator } = require('../validators/idValidator');
+const { uploadBookingSample } = require('../middleware/upload');
 
-router.post('/', protect, bookingValidator, createBooking);
+router.post('/', protect, uploadBookingSample.single('sample'), bookingValidator, createBooking);
 router.get('/', protect, getMyBookings);
 router.get('/mine', protect, getMyBookings);
 router.get('/availability/:businessId', getAvailableSlots);

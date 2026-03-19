@@ -18,9 +18,23 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+const allowedOrigins = (process.env.CLIENT_URL || process.env.CORS_ORIGIN || 'http://127.0.0.1:5500')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function corsOriginHandler(origin, callback) {
+  if (!origin || allowedOrigins.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error('Not allowed by CORS'));
+}
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://127.0.0.1:5500', // Restricting origin to something specific!
+    origin: corsOriginHandler, // Restricting origin to something specific!
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -35,12 +49,12 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https://res.cloudinary.com"], // Allowing Cloudinary images too just in case!
-      connectSrc: ["'self'", "https://api.cloudinary.com"]
+      connectSrc: ["'self'", "https://api.cloudinary.com", ...allowedOrigins]
     },
   },
 }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://127.0.0.1:5500',
+  origin: corsOriginHandler,
   credentials: true
 }));
 app.use(express.json());
@@ -63,15 +77,65 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 connectDB();
 
+function getSocketToken(socket) {
+  const authToken = socket.handshake.auth && socket.handshake.auth.token;
+  if (authToken) return authToken;
+
+  const header = socket.handshake.headers.authorization;
+  if (header && header.startsWith('Bearer ')) {
+    return header.split(' ')[1];
+  }
+
+  if (socket.handshake.query && socket.handshake.query.token) {
+    return socket.handshake.query.token;
+  }
+
+  return null;
+}
+
+function getSocketUserId(decoded) {
+  return decoded?.user?.id || decoded?.userId || decoded?.id || null;
+}
+
+function emitSocketError(socket, message, extra = {}) {
+  const payload = { message, ...extra };
+  socket.emit('socketError', payload);
+  socket.emit('error', payload);
+}
+
+async function getAuthorizedBookingForSocket(bookingId, userId) {
+  const booking = await Booking.findById(bookingId).populate('business');
+
+  if (!booking) {
+    return { error: 'Booking not found' };
+  }
+
+  const isClient = String(booking.user) === String(userId);
+  const isBusiness = String(booking.business.owner) === String(userId);
+
+  if (!isClient && !isBusiness) {
+    return { error: 'Unauthorized' };
+  }
+
+  return {
+    booking,
+    senderType: isClient ? 'client' : 'business'
+  };
+}
+
 // WebSocket authentication middleware
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const token = getSocketToken(socket);
   if (!token) {
     return next(new Error('Authentication error'));
   }
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    socket.userId = decoded.userId;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'devsecret');
+    const userId = getSocketUserId(decoded);
+    if (!userId) {
+      return next(new Error('Authentication error'));
+    }
+    socket.userId = userId;
     next();
   } catch (err) {
     next(new Error('Authentication error'));
@@ -81,31 +145,51 @@ io.use((socket, next) => {
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.userId);
+  socket.join(`user_${socket.userId}`);
 
   // Join a booking-specific room
-  socket.on('joinBooking', (bookingId) => {
-    socket.join(`booking_${bookingId}`);
-    console.log(`User ${socket.userId} joined booking ${bookingId}`);
-  });
-
-  // Send message
-  socket.on('sendMessage', async (data) => {
+  socket.on('joinBooking', async (bookingId, callback) => {
     try {
-      const { bookingId, content, senderType } = data;
-
-      // Verify booking exists and user is authorized
-      const booking = await Booking.findById(bookingId).populate('business');
-      if (!booking) {
-        socket.emit('error', { message: 'Booking not found' });
+      const access = await getAuthorizedBookingForSocket(bookingId, socket.userId);
+      if (access.error) {
+        emitSocketError(socket, access.error, { bookingId });
+        if (typeof callback === 'function') callback({ ok: false, message: access.error });
         return;
       }
 
-      // Verify user is part of this booking
-      const isClient = String(booking.user) === String(socket.userId);
-      const isBusiness = String(booking.business.owner) === String(socket.userId);
+      socket.join(`booking_${bookingId}`);
+      const payload = { ok: true, bookingId: String(bookingId) };
+      socket.emit('joinedBooking', payload);
+      if (typeof callback === 'function') callback(payload);
+      console.log(`User ${socket.userId} joined booking ${bookingId}`);
+    } catch (error) {
+      emitSocketError(socket, error.message, { bookingId });
+      if (typeof callback === 'function') callback({ ok: false, message: error.message });
+    }
+  });
 
-      if (!isClient && !isBusiness) {
-        socket.emit('error', { message: 'Unauthorized' });
+  // Send message
+  socket.on('sendMessage', async (data = {}, callback) => {
+    try {
+      const { bookingId, content, senderType } = data;
+      if (!bookingId || !content || !String(content).trim()) {
+        const message = 'bookingId and content are required';
+        emitSocketError(socket, message);
+        if (typeof callback === 'function') callback({ ok: false, message });
+        return;
+      }
+
+      const access = await getAuthorizedBookingForSocket(bookingId, socket.userId);
+      if (access.error) {
+        emitSocketError(socket, access.error, { bookingId });
+        if (typeof callback === 'function') callback({ ok: false, message: access.error });
+        return;
+      }
+
+      if (senderType && senderType !== access.senderType) {
+        const message = 'senderType does not match the authenticated user';
+        emitSocketError(socket, message, { bookingId });
+        if (typeof callback === 'function') callback({ ok: false, message });
         return;
       }
 
@@ -113,30 +197,102 @@ io.on('connection', (socket) => {
       const message = await Message.create({
         booking: bookingId,
         sender: socket.userId,
-        senderType: senderType,
-        content: content
+        senderType: access.senderType,
+        content: String(content).trim()
       });
 
-      await message.populate('sender');
+      const populatedMessage = await Message.findById(message._id)
+        .populate('sender', 'name email')
+        .populate('booking');
 
       // Broadcast to all users in the booking room
-      io.to(`booking_${bookingId}`).emit('newMessage', message.toJSON());
+      io.to(`booking_${bookingId}`).emit('newMessage', populatedMessage.toJSON());
+      if (typeof callback === 'function') {
+        callback({ ok: true, message: populatedMessage.toJSON() });
+      }
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      emitSocketError(socket, error.message);
+      if (typeof callback === 'function') callback({ ok: false, message: error.message });
     }
   });
 
   // Mark messages as read
-  socket.on('markAsRead', async (data) => {
+  socket.on('markAsRead', async (data = {}, callback) => {
     try {
-      const { messageIds } = data;
+      const { messageIds, bookingId } = data;
+
+      let messages = [];
+      if (bookingId) {
+        const access = await getAuthorizedBookingForSocket(bookingId, socket.userId);
+        if (access.error) {
+          emitSocketError(socket, access.error, { bookingId });
+          if (typeof callback === 'function') callback({ ok: false, message: access.error });
+          return;
+        }
+
+        messages = await Message.find({
+          booking: bookingId,
+          sender: { $ne: socket.userId },
+          isRead: false
+        });
+      } else if (Array.isArray(messageIds) && messageIds.length > 0) {
+        messages = await Message.find({ _id: { $in: messageIds } }).populate({
+          path: 'booking',
+          populate: { path: 'business', select: 'owner' }
+        });
+      } else {
+        const message = 'messageIds array or bookingId is required';
+        emitSocketError(socket, message);
+        if (typeof callback === 'function') callback({ ok: false, message });
+        return;
+      }
+
+      const authorizedMessageIds = [];
+      const bookingIds = new Set();
+
+      messages.forEach((messageDoc) => {
+        const booking = messageDoc.booking && messageDoc.booking._id ? messageDoc.booking : null;
+        const bookingUserId = booking ? booking.user : null;
+        const bookingOwnerId = booking && booking.business ? booking.business.owner : null;
+
+        if (booking && (String(bookingUserId) === String(socket.userId) || String(bookingOwnerId) === String(socket.userId))) {
+          authorizedMessageIds.push(messageDoc._id);
+          bookingIds.add(String(booking._id));
+          return;
+        }
+
+        if (!booking && bookingId) {
+          authorizedMessageIds.push(messageDoc._id);
+          bookingIds.add(String(bookingId));
+        }
+      });
+
+      if (authorizedMessageIds.length === 0) {
+        const payload = { ok: true, messageIds: [], bookingIds: Array.from(bookingIds) };
+        socket.emit('messagesMarkedAsRead', payload);
+        if (typeof callback === 'function') callback(payload);
+        return;
+      }
+
       await Message.updateMany(
-        { _id: { $in: messageIds } },
+        { _id: { $in: authorizedMessageIds } },
         { isRead: true }
       );
-      socket.emit('messagesMarkedAsRead', { messageIds });
+
+      const payload = {
+        ok: true,
+        messageIds: authorizedMessageIds.map((id) => String(id)),
+        bookingIds: Array.from(bookingIds)
+      };
+
+      payload.bookingIds.forEach((id) => {
+        io.to(`booking_${id}`).emit('messagesMarkedAsRead', payload);
+      });
+
+      if (typeof callback === 'function') callback(payload);
     } catch (error) {
-      socket.emit('error', { message: error.message });
+      emitSocketError(socket, error.message);
+      if (typeof callback === 'function') callback({ ok: false, message: error.message });
     }
   });
 

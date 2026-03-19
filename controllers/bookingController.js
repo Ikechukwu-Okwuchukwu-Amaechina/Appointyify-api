@@ -77,16 +77,59 @@ function generateSlotsFromWorkingHours(workingHours, slotDuration, dateObj) {
   return [];
 }
 
+function buildSamplePayload(file) {
+  if (!file) return undefined;
+
+  return {
+    url: file.path,
+    publicId: file.filename,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size
+  };
+}
+
+function emitBookingEvent(io, booking, businessOwnerId, eventName) {
+  if (!io || !booking) return;
+
+  const bookingUserId = booking.user && booking.user._id ? booking.user._id : booking.user;
+  const ownerId = businessOwnerId && businessOwnerId._id ? businessOwnerId._id : businessOwnerId;
+  const payload = typeof booking.toJSON === 'function' ? booking.toJSON() : booking;
+  io.to(`user_${String(bookingUserId)}`).emit(eventName, payload);
+  io.to(`user_${String(ownerId)}`).emit(eventName, payload);
+}
+
 exports.createBooking = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   try {
-    const { business: businessId, date, days, startTime, notes } = req.body;
+    const {
+      business: businessId,
+      date,
+      days,
+      startTime,
+      notes,
+      serviceType,
+      phone,
+      location,
+      addressDirection,
+      budget
+    } = req.body;
     if (!businessId) return res.status(400).json({ msg: 'business is required' });
 
     const business = await Business.findById(businessId);
     if (!business) return res.status(404).json({ msg: 'Business not found' });
+
+    const bookingExtras = {
+      notes,
+      serviceType,
+      phone,
+      location,
+      addressDirection,
+      budget,
+      sample: buildSamplePayload(req.file)
+    };
 
     // If a single date booking
     if (date) {
@@ -101,9 +144,19 @@ exports.createBooking = async (req, res) => {
       const existing = await Booking.findOne({ business: businessId, date: dateObj, startTime, status: { $ne: 'cancelled' } });
       if (existing) return res.status(409).json({ msg: 'Slot already booked' });
 
-      const bookingData = { user: req.user._id, business: businessId, date: dateObj, startTime, endTime: match.endTime, notes, recurring: false };
+      const bookingData = {
+        user: req.user._id,
+        business: businessId,
+        date: dateObj,
+        startTime,
+        endTime: match.endTime,
+        recurring: false,
+        ...bookingExtras
+      };
       const booking = await Booking.create(bookingData);
-      return res.status(201).json(booking);
+      const populatedBooking = await Booking.findById(booking._id).populate('business user');
+      emitBookingEvent(req.app.get('io'), populatedBooking, business.owner, 'bookingCreated');
+      return res.status(201).json(populatedBooking);
     }
 
     // If recurring days booking
@@ -121,9 +174,19 @@ exports.createBooking = async (req, res) => {
       const existing = await Booking.findOne({ business: businessId, recurring: true, days: { $all: normalizedDays }, startTime, status: { $ne: 'cancelled' } });
       if (existing) return res.status(409).json({ msg: 'Recurring slot already exists' });
 
-      const bookingData = { user: req.user._id, business: businessId, days: normalizedDays, recurring: true, startTime, endTime: match.endTime, notes };
+      const bookingData = {
+        user: req.user._id,
+        business: businessId,
+        days: normalizedDays,
+        recurring: true,
+        startTime,
+        endTime: match.endTime,
+        ...bookingExtras
+      };
       const booking = await Booking.create(bookingData);
-      return res.status(201).json(booking);
+      const populatedBooking = await Booking.findById(booking._id).populate('business user');
+      emitBookingEvent(req.app.get('io'), populatedBooking, business.owner, 'bookingCreated');
+      return res.status(201).json(populatedBooking);
     }
 
     return res.status(400).json({ msg: 'Either date or days must be provided' });
@@ -211,6 +274,7 @@ exports.cancelBooking = async (req, res) => {
     }
     b.status = 'cancelled';
     await b.save();
+    emitBookingEvent(req.app.get('io'), b, b.business.owner, 'bookingUpdated');
     res.json(b);
   } catch (err) {
     res.status(400).json({ msg: 'Bad request', error: err.message });
@@ -227,6 +291,7 @@ exports.updateBookingStatus = async (req, res) => {
     if (String(b.business.owner) !== String(req.user._id) && req.user.role !== 'admin') return res.status(403).json({ msg: 'Forbidden' });
     b.status = status;
     await b.save();
+    emitBookingEvent(req.app.get('io'), b, b.business.owner, 'bookingUpdated');
     res.json(b);
   } catch (err) {
     res.status(400).json({ msg: 'Bad request', error: err.message });

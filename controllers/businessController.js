@@ -57,6 +57,8 @@ exports.updateBusiness = async (req, res) => {
       return res.status(403).json({ msg: 'Forbidden' });
     }
     Object.assign(b, req.body);
+    // Mongoose won't auto-detect changes on Mixed fields — mark it explicitly
+    if (req.body.workingHours !== undefined) b.markModified('workingHours');
     await b.save();
     res.json(b);
   } catch (err) {

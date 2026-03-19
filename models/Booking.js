@@ -11,6 +11,18 @@ const bookingSchema = new mongoose.Schema({
   endTime: { type: String },
   status: { type: String, enum: ['pending', 'confirmed', 'cancelled'], default: 'pending' },
   notes: { type: String },
+  serviceType: { type: String },
+  phone: { type: String },
+  location: { type: String },
+  addressDirection: { type: String },
+  budget: { type: String },
+  sample: {
+    url: { type: String },
+    publicId: { type: String },
+    originalName: { type: String },
+    mimeType: { type: String },
+    size: { type: Number }
+  },
 }, { timestamps: true });
 
 // Ensure dates are returned in ISO format and strip internal fields

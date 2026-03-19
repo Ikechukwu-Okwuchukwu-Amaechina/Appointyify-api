@@ -155,6 +155,28 @@ Most endpoints require a Bearer token in the Authorization header:
             },
           },
         },
+        WorkingHoursConfig: {
+          type: 'object',
+          description: 'Per-day working hours. Each key is a lowercase weekday name.',
+          example: {
+            monday:    { open: '09:00', close: '17:00', enabled: true },
+            tuesday:   { open: '09:00', close: '17:00', enabled: true },
+            wednesday: { open: '09:00', close: '17:00', enabled: true },
+            thursday:  { open: '09:00', close: '17:00', enabled: true },
+            friday:    { open: '09:00', close: '17:00', enabled: true },
+            saturday:  { open: '09:00', close: '17:00', enabled: false },
+            sunday:    { open: '09:00', close: '17:00', enabled: false },
+          },
+          additionalProperties: {
+            type: 'object',
+            required: ['open', 'close', 'enabled'],
+            properties: {
+              open:    { type: 'string', example: '09:00', description: 'Opening time (HH:mm)' },
+              close:   { type: 'string', example: '17:00', description: 'Closing time (HH:mm)' },
+              enabled: { type: 'boolean', example: true,   description: 'Whether the business is open this day' },
+            },
+          },
+        },
         Business: {
           type: 'object',
           required: ['name', 'owner'],
@@ -200,10 +222,12 @@ Most endpoints require a Bearer token in the Authorization header:
               description: 'Business contact email',
               example: 'contact@salon.com'
             },
-            workingHours: { 
-              type: 'string',
-              description: 'Operating hours in HH:MM-HH:MM format',
-              example: '09:00-17:00'
+            workingHours: {
+              description: 'Operating hours. Preferred: per-day object. Legacy: "HH:mm-HH:mm" string.',
+              oneOf: [
+                { $ref: '#/components/schemas/WorkingHoursConfig' },
+                { type: 'string', example: '09:00-17:00', description: 'Legacy global hours string' },
+              ],
             },
             slotDuration: { 
               type: 'number',
@@ -259,7 +283,7 @@ Most endpoints require a Bearer token in the Authorization header:
         },
         Booking: {
           type: 'object',
-          required: ['user', 'business', 'date', 'startTime', 'endTime'],
+          required: ['user', 'business', 'startTime', 'endTime'],
           properties: {
             _id: { 
               type: 'string',
@@ -279,17 +303,34 @@ Most endpoints require a Bearer token in the Authorization header:
             date: { 
               type: 'string', 
               format: 'date-time',
-              description: 'Booking date in ISO 8601 format',
-              example: '2026-02-15T00:00:00.000Z'
+              nullable: true,
+              description: 'Booking date (ISO 8601). Present for single-date bookings; null for recurring.',
+              example: '2026-03-23T00:00:00.000Z'
+            },
+            days: {
+              type: 'array',
+              nullable: true,
+              description: 'Weekday names for recurring bookings. Present when recurring=true.',
+              items: {
+                type: 'string',
+                enum: ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'],
+              },
+              example: ['monday', 'wednesday', 'friday'],
+            },
+            recurring: {
+              type: 'boolean',
+              description: 'True when this booking repeats weekly on the specified days.',
+              default: false,
+              example: false,
             },
             startTime: { 
               type: 'string',
-              description: 'Appointment start time in HH:MM format',
+              description: 'Appointment start time (HH:mm)',
               example: '10:00'
             },
             endTime: { 
               type: 'string',
-              description: 'Appointment end time in HH:MM format',
+              description: 'Appointment end time (HH:mm), auto-calculated from business slotDuration',
               example: '10:30'
             },
             status: { 
@@ -391,18 +432,37 @@ Most endpoints require a Bearer token in the Authorization header:
           properties: {
             startTime: {
               type: 'string',
-              description: 'Slot start time in HH:MM format',
+              description: 'Slot start time (HH:mm)',
               example: '10:00'
             },
             endTime: {
               type: 'string',
-              description: 'Slot end time in HH:MM format',
+              description: 'Slot end time (HH:mm)',
               example: '10:30'
             },
-            isAvailable: {
+            available: {
               type: 'boolean',
               description: 'Whether this slot is available for booking',
               example: true
+            }
+          }
+        },
+        AvailabilityResponse: {
+          type: 'object',
+          properties: {
+            open: {
+              type: 'boolean',
+              description: 'Whether the business is open on the requested date',
+              example: true
+            },
+            slots: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/TimeSlot' },
+            },
+            msg: {
+              type: 'string',
+              description: 'Present only when open=false',
+              example: 'Business is not open on that day'
             }
           }
         },
@@ -820,14 +880,34 @@ Most endpoints require a Bearer token in the Authorization header:
                   type: 'object',
                   required: ['name'],
                   properties: {
-                    name: { type: 'string' },
-                    description: { type: 'string' },
-                    category: { type: 'string' },
-                    address: { type: 'string' },
-                    phone: { type: 'string' },
-                    email: { type: 'string' },
-                    workingHours: { type: 'string', example: '09:00-17:00' },
-                    slotDuration: { type: 'number', default: 30 },
+                    name:         { type: 'string', example: 'Downtown Hair Salon' },
+                    description:  { type: 'string' },
+                    category:     { type: 'string' },
+                    address:      { type: 'string' },
+                    phone:        { type: 'string' },
+                    email:        { type: 'string' },
+                    workingHours: {
+                      description: 'Per-day hours object (preferred) or legacy "HH:mm-HH:mm" string.',
+                      oneOf: [
+                        { $ref: '#/components/schemas/WorkingHoursConfig' },
+                        { type: 'string', example: '09:00-17:00' },
+                      ],
+                    },
+                    slotDuration: { type: 'number', default: 30, example: 30 },
+                  },
+                },
+                example: {
+                  name: 'Downtown Hair Salon',
+                  category: 'Beauty & Wellness',
+                  slotDuration: 30,
+                  workingHours: {
+                    monday:    { open: '09:00', close: '17:00', enabled: true },
+                    tuesday:   { open: '09:00', close: '17:00', enabled: true },
+                    wednesday: { open: '09:00', close: '17:00', enabled: true },
+                    thursday:  { open: '09:00', close: '17:00', enabled: true },
+                    friday:    { open: '09:00', close: '17:00', enabled: true },
+                    saturday:  { open: '09:00', close: '17:00', enabled: false },
+                    sunday:    { open: '09:00', close: '17:00', enabled: false },
                   },
                 },
               },
@@ -969,6 +1049,23 @@ Most endpoints require a Bearer token in the Authorization header:
       '/api/bookings': {
         post: {
           summary: 'Create a booking',
+          description: `Create either a **single-date** or a **recurring** booking.
+
+**Single-date** — provide \`date\` (YYYY-MM-DD) + \`startTime\` (or alias \`time\`):
+\`\`\`json
+{ "business": "ID", "date": "2026-03-23", "startTime": "09:00", "notes": "optional" }
+\`\`\`
+
+**Recurring** — provide \`days\` (weekday name array) + \`startTime\` (or alias \`time\`):
+\`\`\`json
+{ "business": "ID", "days": ["monday","wednesday"], "startTime": "09:00" }
+\`\`\`
+
+- \`endTime\` is auto-calculated from the business \`slotDuration\`.
+- The time must match a valid slot within the business working hours for that day.
+- Returns **400** \`Business is not open on that day\` when the day is disabled.
+- Returns **400** with \`Available slots: HH:mm, …\` when the time is outside working hours.
+- Returns **409** when the slot is already booked.`,
           tags: ['Booking'],
           security: [{ bearerAuth: [] }],
           requestBody: {
@@ -977,12 +1074,29 @@ Most endpoints require a Bearer token in the Authorization header:
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['business', 'date', 'startTime'],
+                  required: ['business'],
                   properties: {
-                    business: { type: 'string' },
-                    date: { type: 'string', format: 'date', example: '2026-02-15' },
-                    startTime: { type: 'string', example: '10:00' },
-                    notes: { type: 'string' },
+                    business:  { type: 'string', description: 'Business ID', example: '507f1f77bcf86cd799439012' },
+                    date:      { type: 'string', format: 'date', description: 'Single-date booking date (YYYY-MM-DD). Mutually exclusive with days.', example: '2026-03-23' },
+                    days: {
+                      type: 'array',
+                      description: 'Recurring weekdays. Mutually exclusive with date.',
+                      items: { type: 'string', enum: ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] },
+                      example: ['monday', 'wednesday', 'friday'],
+                    },
+                    startTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$', description: 'Start time (HH:mm). Alias: time.', example: '09:00' },
+                    time:      { type: 'string', pattern: '^\\d{2}:\\d{2}$', description: 'Alias for startTime (HH:mm).', example: '09:00' },
+                    notes:     { type: 'string', example: 'Budget: 20' },
+                  },
+                },
+                examples: {
+                  singleDate: {
+                    summary: 'Single-date booking',
+                    value: { business: '507f1f77bcf86cd799439012', date: '2026-03-23', startTime: '09:00', notes: 'Budget: 20' },
+                  },
+                  recurring: {
+                    summary: 'Recurring Mon/Wed/Fri',
+                    value: { business: '507f1f77bcf86cd799439012', days: ['monday','wednesday','friday'], startTime: '09:00' },
                   },
                 },
               },
@@ -993,6 +1107,21 @@ Most endpoints require a Bearer token in the Authorization header:
               description: 'Booking created',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Booking' } } },
             },
+            400: {
+              description: 'Validation error or slot unavailable',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Error' },
+                  examples: {
+                    closedDay:     { summary: 'Day disabled',   value: { msg: 'Business is not open on that day' } },
+                    badTime:       { summary: 'Invalid time',   value: { msg: 'Requested time is not an available slot. Available slots: 09:00, 09:30, 10:00' } },
+                    missingFields: { summary: 'Missing fields', value: { msg: 'Either date or days must be provided' } },
+                  },
+                },
+              },
+            },
+            409: { description: 'Slot already booked', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' }, example: { msg: 'Slot already booked' } } } },
+            401: { $ref: '#/components/responses/UnauthorizedError' },
           },
         },
         get: {
@@ -1020,13 +1149,42 @@ Most endpoints require a Bearer token in the Authorization header:
       },
       '/api/bookings/availability/{businessId}': {
         get: {
-          summary: 'Get available time slots for a business',
+          summary: 'Get available time slots for a business on a given date',
+          description: 'Returns all slots from the business working hours for the requested date with availability flags. When the business is closed that day, returns `open: false` with an empty `slots` array.',
           tags: ['Booking'],
           parameters: [
-            { in: 'path', name: 'businessId', required: true, schema: { type: 'string' } },
-            { in: 'query', name: 'date', required: true, schema: { type: 'string', format: 'date', example: '2026-02-15' } },
+            { in: 'path',  name: 'businessId', required: true, schema: { type: 'string' }, description: 'Business ID' },
+            { in: 'query', name: 'date', required: true, schema: { type: 'string', format: 'date', example: '2026-03-23' }, description: 'Date to check (YYYY-MM-DD)' },
           ],
-          responses: { 200: { description: 'Available slots' } },
+          responses: {
+            200: {
+              description: 'Availability result',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AvailabilityResponse' },
+                  examples: {
+                    open: {
+                      summary: 'Business is open',
+                      value: {
+                        open: true,
+                        slots: [
+                          { startTime: '09:00', endTime: '09:30', available: true  },
+                          { startTime: '09:30', endTime: '10:00', available: false },
+                          { startTime: '10:00', endTime: '10:30', available: true  },
+                        ],
+                      },
+                    },
+                    closed: {
+                      summary: 'Business closed on this day',
+                      value: { open: false, slots: [], msg: 'Business is not open on that day' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing or invalid date query param' },
+            404: { description: 'Business not found' },
+          },
         },
       },
       '/api/bookings/business/{businessId}': {
